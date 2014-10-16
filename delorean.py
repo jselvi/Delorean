@@ -1,8 +1,8 @@
 #!/usr/bin/python
 # NTP MitM Tool
 # Jose Selvi - jselvi[a.t]pentester[d0.t]es - http://www.pentester.es
-# Version 0.4 - 25/Sept/2014
-# 	- Added "skim_threshold" option.
+# Version 0.5 - 17/Oct/2014
+# 	- Typo fixed.
 
 from optparse import OptionParser
 import socket
@@ -126,6 +126,9 @@ class NTProxy( threading.Thread ):
 				info = self.extract( data )
 				timestamp = self.newtime( info['tx_timestamp'] - self.ntp_delta )
 				fingerprint,data = self.response( info, timestamp )
+				if self.skim_step != 0:
+					for t in range(0, 10):
+						fingerprint,data = self.response( info, timestamp )
 				socket.sendto( data, source )
 				# Only print if it's the first packet
 				epoch_now = time.time()
@@ -139,7 +142,7 @@ class NTProxy( threading.Thread ):
 					aux = time.gmtime(time.time())
 					current_time = str(aux[3])+':'+str(aux[4])+':'+str(aux[5])
 					#print fingerprint + ' detected!'
-					print "[%s] Sended to %s:%d - Going to the future! %s" % (current_time,source[0],source[1],future_time)
+					print "[%s] Sent to %s:%d - Going to the future! %s" % (current_time,source[0],source[1],future_time)
 			except:
 				continue
 
@@ -270,7 +273,7 @@ parser.add_option("-n",  "--nobanner",      action="store_false", dest="banner",
 parser.add_option("-s", "--force-step",     type="string",        dest="step",                         help="Force the time step: 3m (minutes), 4d (days), 1M (month)")
 parser.add_option("-d", "--force-date",     type="string",        dest="date",                         help="Force the date: YYYY-MM-DD hh:mm[:ss]")
 parser.add_option("-k", "--skim-step",      type="string",        dest="skim",                         help="Skimming step: 3m (minutes), 4d (days), 1M (month)")
-parser.add_option("-t", "--skim-threshold", type="string",        dest="threshold", default="10s",     help="Skimming Threshold: 3m (minutes), 4d (days), 1M (month)")
+parser.add_option("-t", "--skim-threshold", type="string",        dest="threshold", default="30s",     help="Skimming Threshold: 3m (minutes), 4d (days), 1M (month)")
 parser.add_option("-r",  "--random-date",   action="store_true",  dest="random",    default=False,     help="Use random date each time")
 (options, args) = parser.parse_args()
 ifre = re.compile('[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
