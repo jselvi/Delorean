@@ -73,7 +73,7 @@ class NTProxy( threading.Thread ):
 	def force_random( self, random ):
 		self.forced_random = random
 
-	# Set the step to the future
+	# Set the step to the future/past
 	def select_step( self ):
 		# Get current date
 		current_time = time.time()
@@ -98,7 +98,7 @@ class NTProxy( threading.Thread ):
 			future_time = current_time + self.forced_step
 		self.step = future_time - current_time
 
-	# Select a new time in the future
+	# Select a new time in the future/past
 	def newtime( self, timestamp ):
 		current_time	= time.time()
 		skim_time	= timestamp + self.skim_step - 5
@@ -142,7 +142,11 @@ class NTProxy( threading.Thread ):
 					aux = time.gmtime(time.time())
 					current_time = str(aux[3])+':'+str(aux[4])+':'+str(aux[5])
 					#print fingerprint + ' detected!'
-					print "[%s] Sent to %s:%d - Going to the future! %s" % (current_time,source[0],source[1],future_time)
+					if self.step < 0:
+						when = "past"
+					else:
+						when = "future"
+					print "[%s] Sent to %s:%d - Going to the %s! %s" % (current_time,source[0],source[1],when,future_time)
 			except:
 				continue
 
@@ -277,7 +281,7 @@ parser.add_option("-t", "--skim-threshold", type="string",        dest="threshol
 parser.add_option("-r",  "--random-date",   action="store_true",  dest="random",    default=False,     help="Use random date each time")
 (options, args) = parser.parse_args()
 ifre = re.compile('[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
-fsre = re.compile('[0-9]+[smhdwMy]?')
+fsre = re.compile('[-]?[0-9]+[smhdwMy]?')
 fdre = re.compile('[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9](:[0-9][0-9])?')
 # Check options
 if (
