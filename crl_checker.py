@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import scapy
 from scapy.layers.ssl_tls import *  # https://github.com/tintinweb/scapy-ssl_tls
@@ -138,6 +138,6 @@ try:
             continue
 
 except KeyboardInterrupt:
-    print "Exited"
+    print("Exited")
 
 s.close()

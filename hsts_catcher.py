@@ -72,4 +72,4 @@ if options.raw:
 else:
     output = get_hsts(options.url, options.user_agent)
 # Print result
-print output
+print(output)
