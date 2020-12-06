@@ -1,7 +1,10 @@
 #!/usr/bin/python
 # Python Script that looks for HSTS Header of a given URL
 # Jose Selvi - jselvi[a.t]pentester[d0.t]es - http://www.pentester.es
-# Version 0.1 - 09/Feb/2014
+# Greetings for Python3 port to Tristan Rice - https://github.com/d4l3k
+# Version 1.0 - 06/Dec/2020
+# 	- Port to Python3.
+# 	- Several style fixes.
 
 # Importing
 from optparse import OptionParser

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # NTP MitM Tool
 # Jose Selvi - jselvi[a.t]pentester[d0.t]es - http://www.pentester.es
-# Version 1.3 - 24/Jan/2016
-# 	- Remove unlikely attacks.
+# Greetings for Python3 port to Tristan Rice - https://github.com/d4l3k
+# Version 1.4 - 06/Dec/2020
+# 	- Port to Python3.
+# 	- Several style fixes.
 
 # General Imports
 from optparse import OptionParser
@@ -19,36 +21,16 @@ import os
 
 
 def banner():
-    print(
-        "                                    _._                                          "
-    )
-    print(
-        '                               _.-="_-         _                                 '
-    )
-    print(
-        '                          _.-="   _-          | ||"""""""---._______     __..    '
-    )
-    print(
-        '              ___.===""""-.______-,,,,,,,,,,,,`-\'\'----" """""       """""  __\'   '
-    )
-    print(
-        '       __.--""     __        ,\'                   o \           __        [__|   '
-    )
-    print(
-        '  __-""=======.--""  ""--.=================================.--""  ""--.=======:  '
-    )
-    print(
-        " ]       [w] : /        \ : |========================|    : /        \ :  [w] :  "
-    )
-    print(
-        ' V___________:|          |: |========================|    :|          |:   _-"   '
-    )
-    print(
-        '  V__________: \        / :_|=======================/_____: \        / :__-"     '
-    )
-    print(
-        '  -----------\'  ""____""  `-------------------------------\'  ""____""            '
-    )
+    print('                                    _._                                          ')
+    print('                               _.-="_-         _                                 ')
+    print('                          _.-="   _-          | ||"""""""---._______     __..    ')
+    print('              ___.===""""-.______-,,,,,,,,,,,,`-\'\'----" """""       """""  __\'   ')
+    print('       __.--""     __        ,\'                   o \           __        [__|   ')
+    print('  __-""=======.--""  ""--.=================================.--""  ""--.=======:  ')
+    print(' ]       [w] : /        \ : |========================|    : /        \ :  [w] :  ')
+    print(' V___________:|          |: |========================|    :|          |:   _-"   ')
+    print('  V__________: \        / :_|=======================/_____: \        / :__-"     ')
+    print('  -----------\'  ""____""  `-------------------------------\'  ""____""            ')
 
 
 # NTP-Proxy Class
@@ -231,23 +213,23 @@ class NTProxy(threading.Thread):
         )
         # Extract information
         info = {}
-        info["leap"] = unpacked[0] >> 6 & 0x3
-        info["version"] = unpacked[0] >> 3 & 0x7
-        info["mode"] = unpacked[0] & 0x7
-        info["stratum"] = unpacked[1]
-        info["poll"] = unpacked[2]
-        info["precision"] = unpacked[3]
-        info["root_delay"] = float(unpacked[4]) / 2 ** 16
-        info["root_dispersion"] = float(unpacked[5]) / 2 ** 16
-        info["ref_id"] = unpacked[6]
-        info["ref_timestamp"] = unpacked[7] + float(unpacked[8]) / 2 ** 32
-        info["orig_timestamp"] = unpacked[9] + float(unpacked[10]) / 2 ** 32
+        info["leap"]                = unpacked[0] >> 6 & 0x3
+        info["version"]             = unpacked[0] >> 3 & 0x7
+        info["mode"]                = unpacked[0] & 0x7
+        info["stratum"]             = unpacked[1]
+        info["poll"]                = unpacked[2]
+        info["precision"]           = unpacked[3]
+        info["root_delay"]          = float(unpacked[4]) / 2 ** 16
+        info["root_dispersion"]     = float(unpacked[5]) / 2 ** 16
+        info["ref_id"]              = unpacked[6]
+        info["ref_timestamp"]       = unpacked[7] + float(unpacked[8]) / 2 ** 32
+        info["orig_timestamp"]      = unpacked[9] + float(unpacked[10]) / 2 ** 32
         info["orig_timestamp_high"] = unpacked[9]
-        info["orig_timestamp_low"] = unpacked[10]
-        info["recv_timestamp"] = unpacked[11] + float(unpacked[12]) / 2 ** 32
-        info["tx_timestamp"] = unpacked[13] + float(unpacked[14]) / 2 ** 32
-        info["tx_timestamp_high"] = unpacked[13]
-        info["tx_timestamp_low"] = unpacked[14]
+        info["orig_timestamp_low"]  = unpacked[10]
+        info["recv_timestamp"]      = unpacked[11] + float(unpacked[12]) / 2 ** 32
+        info["tx_timestamp"]        = unpacked[13] + float(unpacked[14]) / 2 ** 32
+        info["tx_timestamp_high"]   = unpacked[13]
+        info["tx_timestamp_low"]    = unpacked[14]
         # Return useful info for respose
         return info
 
@@ -275,12 +257,12 @@ class NTProxy(threading.Thread):
         ntp_timestamp = timestamp + self.ntp_delta
         param = {}
         param["ID"] = "Unknown"
-        param["leap"] = 0  # No warnings, no errors
+        param["leap"] = 0                   # No warnings, no errors
         param["version"] = info["version"]  # Use the same request version
-        param["mode"] = 4  # Always answer server mode
-        param["stratum"] = 2  # Highest NTP priority
-        param["poll"] = 9  # As less poll time as possible
-        param["precision"] = -20  # Maximum precision
+        param["mode"] = 4                   # Always answer server mode
+        param["stratum"] = 2                # Highest NTP priority
+        param["poll"] = 9                   # As less poll time as possible
+        param["precision"] = -20            # Maximum precision
         param["root_delay"] = 0
         param["root_dispersion"] = 0
         param["ref_id"] = info["ref_id"]

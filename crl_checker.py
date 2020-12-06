@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# Jose Selvi - jselvi[a.t]pentester[d0.t]es - http://www.pentester.es
+# Greetings for Python3 port to Tristan Rice - https://github.com/d4l3k
+# Version 1.0 - 06/Dec/2020
+# 	- Port to Python3.
+# 	- Several style fixes.
 
 import scapy
 from scapy.layers.ssl_tls import *  # https://github.com/tintinweb/scapy-ssl_tls
