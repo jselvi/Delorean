@@ -57,7 +57,7 @@ We can set a relative jump from the current date using the step flag (-s). Relat
 [19:47:19] Sent to 192.168.10.113:123 - Going to the future! 2015-08-10 19:47
 ```
 
-We can also set a specific date, and Delorean would answer always the same date:
+We can also set a specific date, and Delorean would answer always the same date. Please note that this date is static, and it is not incremented on each request:
 
 ```
 # ./delorean.py -d ‘2020-08-01 21:15’ -n 
